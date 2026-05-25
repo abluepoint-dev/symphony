@@ -86,6 +86,9 @@ defmodule SymphonyElixir.CoreTest do
 
     write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "123")
     assert {:error, {:unsupported_tracker_kind, "123"}} = Config.validate!()
+
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "gitlab", tracker_project_id: nil)
+    assert {:error, :missing_gitlab_project_id} = Config.validate!()
   end
 
   test "current WORKFLOW.md file is valid and complete" do
