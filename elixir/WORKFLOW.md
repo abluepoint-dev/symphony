@@ -19,7 +19,7 @@ workspace:
   root: ~/code/symphony-workspaces
 hooks:
   after_create: |
-    git clone --depth 1 https://github.com/openai/symphony .
+    git clone --depth 1 ${SYMPHONY_REPO_URL:-https://gitlab.com/openai/symphony.git} .
     if command -v mise >/dev/null 2>&1; then
       cd elixir && mise trust && mise exec -- mix deps.get
     fi
@@ -105,10 +105,10 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 
 - `Backlog` -> out of scope for this workflow; do not modify.
 - `Todo` -> queued; immediately transition to `In Progress` before active work.
-  - Special case: if a PR is already attached, treat as feedback/rework loop (run full PR feedback sweep, address or explicitly push back, revalidate, return to `Human Review`).
+  - Special case: if an MR is already attached, treat as feedback/rework loop (run full MR feedback sweep, address or explicitly push back, revalidate, return to `Human Review`).
 - `In Progress` -> implementation actively underway.
-- `Human Review` -> PR is attached and validated; waiting on human approval.
-- `Merging` -> approved by human; execute the `land` skill flow (do not call `gh pr merge` directly).
+- `Human Review` -> MR is attached and validated; waiting on human approval.
+- `Merging` -> approved by human; execute the `land` skill flow (do not call `glab mr merge` directly).
 - `Rework` -> reviewer requested changes; planning + implementation required.
 - `Done` -> terminal state; no further action required.
 
@@ -119,14 +119,14 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 3. Route to the matching flow:
    - `Backlog` -> do not modify issue content/state; stop and wait for human to move it to `Todo`.
    - `Todo` -> immediately move to `In Progress`, then ensure bootstrap workpad comment exists (create if missing), then start execution flow.
-     - If PR is already attached, start by reviewing all open PR comments and deciding required changes vs explicit pushback responses.
+     - If an MR is already attached, start by reviewing all open MR comments and deciding required changes vs explicit pushback responses.
    - `In Progress` -> continue execution flow from current scratchpad comment.
    - `Human Review` -> wait and poll for decision/review updates.
-   - `Merging` -> on entry, open and follow `.codex/skills/land/SKILL.md`; do not call `gh pr merge` directly.
+   - `Merging` -> on entry, open and follow `.codex/skills/land/SKILL.md`; do not call `glab mr merge` directly.
    - `Rework` -> run rework flow.
    - `Done` -> do nothing and shut down.
-4. Check whether a PR already exists for the current branch and whether it is closed.
-   - If a branch PR exists and is `CLOSED` or `MERGED`, treat prior branch work as non-reusable for this run.
+4. Check whether a MR already exists for the current branch and whether it is closed.
+   - If a branch MR exists and is `CLOSED` or `MERGED`, treat prior branch work as non-reusable for this run.
    - Create a fresh branch from `origin/main` and restart execution flow as a new attempt.
 5. For `Todo` tickets, do startup sequencing in this exact order:
    - `update_issue(..., state: "In Progress")`
@@ -151,7 +151,7 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 5.  Ensure the workpad includes a compact environment stamp at the top as a code fence line:
     - Format: `<host>:<abs-workdir>@<short-sha>`
     - Example: `devbox-01:/home/dev-user/code/symphony-workspaces/MT-32@7bdde33bc`
-    - Do not include metadata already inferable from Linear issue fields (`issue ID`, `status`, `branch`, `PR link`).
+    - Do not include metadata already inferable from Linear issue fields (`issue ID`, `status`, `branch`, `MR link`).
 6.  Add explicit acceptance criteria and TODOs in checklist form in the same comment.
     - If changes are user-facing, include a UI walkthrough acceptance criterion that describes the end-to-end user path to validate.
     - If changes touch app files or app behavior, add explicit app-specific flow checks to `Acceptance Criteria` in the workpad (for example: launch path, changed interaction path, and expected result path).
@@ -165,15 +165,15 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
       - resulting `HEAD` short SHA.
 10. Compact context and proceed to execution.
 
-## PR feedback sweep protocol (required)
+## MR feedback sweep protocol (required)
 
-When a ticket has an attached PR, run this protocol before moving to `Human Review`:
+When a ticket has an attached merge request (MR), run this protocol before moving to `Human Review`:
 
-1. Identify the PR number from issue links/attachments.
+1. Identify the MR number from issue links/attachments.
 2. Gather feedback from all channels:
-   - Top-level PR comments (`gh pr view --comments`).
-   - Inline review comments (`gh api repos/<owner>/<repo>/pulls/<pr>/comments`).
-   - Review summaries/states (`gh pr view --json reviews`).
+   - Top-level MR comments (`glab mr view --comments`).
+   - Inline review comments (`glab api projects/<project-id>/merge_requests/<mr>/notes`).
+   - Review summaries/states (`glab mr view --json approvals,state`).
 3. Treat every actionable reviewer comment (human or bot), including inline review comments, as blocking until one of these is true:
    - code/test/docs updated to address it, or
    - explicit, justified pushback reply is posted on that thread.
@@ -185,9 +185,9 @@ When a ticket has an attached PR, run this protocol before moving to `Human Revi
 
 Use this only when completion is blocked by missing required tools or missing auth/permissions that cannot be resolved in-session.
 
-- GitHub is **not** a valid blocker by default. Always try fallback strategies first (alternate remote/auth mode, then continue publish/review flow).
-- Do not move to `Human Review` for GitHub access/auth until all fallback strategies have been attempted and documented in the workpad.
-- If a non-GitHub required tool is missing, or required non-GitHub auth is unavailable, move the ticket to `Human Review` with a short blocker brief in the workpad that includes:
+- GitLab is **not** a valid blocker by default. Always try fallback strategies first (alternate remote/auth mode, then continue publish/review flow).
+- Do not move to `Human Review` for GitLab access/auth until all fallback strategies have been attempted and documented in the workpad.
+- If a non-GitLab required tool is missing, or required non-GitLab auth is unavailable, move the ticket to `Human Review` with a short blocker brief in the workpad that includes:
   - what is missing,
   - why it blocks required acceptance/validation,
   - exact human action needed to unblock.
@@ -205,7 +205,7 @@ Use this only when completion is blocked by missing required tools or missing au
     - Keep parent/child structure intact as scope evolves.
     - Update the workpad immediately after each meaningful milestone (for example: reproduction complete, code change landed, validation run, review feedback addressed).
     - Never leave completed work unchecked in the plan.
-    - For tickets that started as `Todo` with an attached PR, run the full PR feedback sweep protocol immediately after kickoff and before new feature work.
+    - For tickets that started as `Todo` with an attached MR, run the full MR feedback sweep protocol immediately after kickoff and before new feature work.
 5.  Run validation/tests required for the scope.
     - Mandatory gate: execute all ticket-provided `Validation`/`Test Plan`/ `Testing` requirements when present; treat unmet items as incomplete work.
     - Prefer a targeted proof that directly demonstrates the behavior you changed.
@@ -215,43 +215,43 @@ Use this only when completion is blocked by missing required tools or missing au
     - If app-touching, run `launch-app` validation and capture/upload media via `github-pr-media` before handoff.
 6.  Re-check all acceptance criteria and close any gaps.
 7.  Before every `git push` attempt, run the required validation for your scope and confirm it passes; if it fails, address issues and rerun until green, then commit and push changes.
-8.  Attach PR URL to the issue (prefer attachment; use the workpad comment only if attachment is unavailable).
-    - Ensure the GitHub PR has label `symphony` (add it if missing).
+8.  Attach MR URL to the issue (prefer attachment; use the workpad comment only if attachment is unavailable).
+    - Ensure the GitLab MR has label `symphony` (add it if missing).
 9.  Merge latest `origin/main` into branch, resolve conflicts, and rerun checks.
 10. Update the workpad comment with final checklist status and validation notes.
     - Mark completed plan/acceptance/validation checklist items as checked.
     - Add final handoff notes (commit + validation summary) in the same workpad comment.
-    - Do not include PR URL in the workpad comment; keep PR linkage on the issue via attachment/link fields.
+    - Do not include MR URL in the workpad comment; keep MR linkage on the issue via attachment/link fields.
     - Add a short `### Confusions` section at the bottom when any part of task execution was unclear/confusing, with concise bullets.
     - Do not post any additional completion summary comment.
-11. Before moving to `Human Review`, poll PR feedback and checks:
-    - Read the PR `Manual QA Plan` comment (when present) and use it to sharpen UI/runtime test coverage for the current change.
-    - Run the full PR feedback sweep protocol.
-    - Confirm PR checks are passing (green) after the latest changes.
+11. Before moving to `Human Review`, poll MR feedback and checks:
+    - Read the MR `Manual QA Plan` comment (when present) and use it to sharpen UI/runtime test coverage for the current change.
+    - Run the full MR feedback sweep protocol.
+    - Confirm MR checks are passing (green) after the latest changes.
     - Confirm every required ticket-provided validation/test-plan item is explicitly marked complete in the workpad.
     - Repeat this check-address-verify loop until no outstanding comments remain and checks are fully passing.
     - Re-open and refresh the workpad before state transition so `Plan`, `Acceptance Criteria`, and `Validation` exactly match completed work.
 12. Only then move issue to `Human Review`.
-    - Exception: if blocked by missing required non-GitHub tools/auth per the blocked-access escape hatch, move to `Human Review` with the blocker brief and explicit unblock actions.
-13. For `Todo` tickets that already had a PR attached at kickoff:
-    - Ensure all existing PR feedback was reviewed and resolved, including inline review comments (code changes or explicit, justified pushback response).
+    - Exception: if blocked by missing required non-GitLab tools/auth per the blocked-access escape hatch, move to `Human Review` with the blocker brief and explicit unblock actions.
+13. For `Todo` tickets that already had an MR attached at kickoff:
+    - Ensure all existing MR feedback was reviewed and resolved, including inline review comments (code changes or explicit, justified pushback response).
     - Ensure branch was pushed with any required updates.
     - Then move to `Human Review`.
 
 ## Step 3: Human Review and merge handling
 
 1. When the issue is in `Human Review`, do not code or change ticket content.
-2. Poll for updates as needed, including GitHub PR review comments from humans and bots.
+2. Poll for updates as needed, including GitLab MR review comments from humans and bots.
 3. If review feedback requires changes, move the issue to `Rework` and follow the rework flow.
 4. If approved, human moves the issue to `Merging`.
-5. When the issue is in `Merging`, open and follow `.codex/skills/land/SKILL.md`, then run the `land` skill in a loop until the PR is merged. Do not call `gh pr merge` directly.
+5. When the issue is in `Merging`, open and follow `.codex/skills/land/SKILL.md`, then run the `land` skill in a loop until the MR is merged. Do not call `glab mr merge` directly.
 6. After merge is complete, move the issue to `Done`.
 
 ## Step 4: Rework handling
 
 1. Treat `Rework` as a full approach reset, not incremental patching.
 2. Re-read the full issue body and all human comments; explicitly identify what will be done differently this attempt.
-3. Close the existing PR tied to the issue.
+3. Close the existing MR tied to the issue.
 4. Remove the existing `## Codex Workpad` comment from the issue.
 5. Create a fresh branch from `origin/main`.
 6. Start over from the normal kickoff flow:
@@ -264,15 +264,15 @@ Use this only when completion is blocked by missing required tools or missing au
 - Step 1/2 checklist is fully complete and accurately reflected in the single workpad comment.
 - Acceptance criteria and required ticket-provided validation items are complete.
 - Validation/tests are green for the latest commit.
-- PR feedback sweep is complete and no actionable comments remain.
-- PR checks are green, branch is pushed, and PR is linked on the issue.
-- Required PR metadata is present (`symphony` label).
+- MR feedback sweep is complete and no actionable comments remain.
+- MR checks are green, branch is pushed, and MR is linked on the issue.
+- Required MR metadata is present (`symphony` label).
 - If app-touching, runtime validation/media requirements from `App runtime validation (required)` are complete.
 
 ## Guardrails
 
-- If the branch PR is already closed/merged, do not reuse that branch or prior implementation state for continuation.
-- For closed/merged branch PRs, create a new branch from `origin/main` and restart from reproduction/planning as if starting fresh.
+- If the branch MR is already closed/merged, do not reuse that branch or prior implementation state for continuation.
+- For closed/merged branch MRs, create a new branch from `origin/main` and restart from reproduction/planning as if starting fresh.
 - If issue state is `Backlog`, do not modify it; wait for human to move to `Todo`.
 - Do not edit the issue body/description for planning or progress tracking.
 - Use exactly one persistent workpad comment (`## Codex Workpad`) per issue.
